@@ -1,4 +1,5 @@
 #!/usr/bin/env ruby
+
 require 'nokogiri'
 require 'httparty'
 require 'byebug'
@@ -50,11 +51,11 @@ class Link
   end
 
   def normalize(path)
-    if path.start_with?('/')
+    if path.start_with?('/') || path.empty?
       self.class.base + path
     elsif path.start_with?('#', '..')
       self.class.base + Pathname.new(from_path + path).cleanpath.to_path
-    elsif path =~ /^[a-z0-9]/ && !path.start_with?('http')
+    elsif path =~ /^[a-z0-9]/ && !path.start_with?('http', 'mailto:')
       "#{ self.class.base }/#{ path }"
     else
       path
@@ -63,7 +64,8 @@ class Link
 
   def get
     if to.include?('dcos_generate_config.sh') ||
-       to.include?('dcos_generate_config.ee.sh')
+       to.include?('dcos_generate_config.ee.sh') ||
+       to.start_with?('mailto:')
       return nil
     end
 
@@ -74,6 +76,10 @@ class Link
     log_error(e)
   rescue Errno::ECONNREFUSED => e
     log_error(e)
+  rescue OpenSSL::SSL::SSLError => e
+    log_error(e)
+  rescue
+    puts "Error in #{from } with #{ to }"
   end
 
   def log_error(error)
@@ -169,7 +175,12 @@ class Crawler
   def tags(response)
     doc = Nokogiri::HTML response.body
     # TODO: make this configurable
-    doc.search('article')&.first&.search('a') || []
+    article = doc.search('article')&.first
+    if article
+      article.search('a') || []
+    else
+      doc.search('a') || []
+    end
   end
 
   attr_reader :success_filename,
@@ -183,6 +194,6 @@ end
 if $PROGRAM_NAME == __FILE__
   Crawler.new(
     base: 'https://docs.mesosphere.com',
-    scope: '/1.10'
+    scope: ''
   ).crawl
 end
