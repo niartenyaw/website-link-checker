@@ -159,7 +159,7 @@ class Crawler
 
   def write(link, code, filename)
     File.open(filename, 'a') do |file|
-      file.write "#{ code } #{ link.to } in #{ link.from }\n"
+      file.write "#{ code },#{ link.to },#{ link.from }\n"
     end
   end
 
