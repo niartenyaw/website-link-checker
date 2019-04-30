@@ -1,3 +1,4 @@
+#!/usr/bin/env ruby
 require 'nokogiri'
 require 'httparty'
 require 'byebug'
@@ -33,31 +34,51 @@ class Link
   end
 
   def to
-    normalize(@to)
+    no_hash(normalize(@to))
+  end
+
+  def no_hash(path)
+    path.split('#').first
   end
 
   def from
-    no_hash = @from.split('#').first
-    normalize(no_hash)
+    no_hash(normalize(@from))
+  end
+
+  def from_path
+    from[self.class.base.length..-1]
   end
 
   def normalize(path)
     if path.start_with?('/')
       self.class.base + path
-    elsif path.start_with?('#') || path.start_with?('..')
-      from + path
+    elsif path.start_with?('#', '..')
+      self.class.base + Pathname.new(from_path + path).cleanpath.to_path
     elsif path =~ /^[a-z0-9]/ && !path.start_with?('http')
-      "#{self.class.base}/#{path}"
+      "#{ self.class.base }/#{ path }"
     else
       path
     end
   end
 
   def get
-    self.class.get(to)
-  rescue URI::InvalidURIError
+    if to.include?('dcos_generate_config.sh') ||
+       to.include?('dcos_generate_config.ee.sh')
+      return nil
+    end
+
+    self.class.get(to, limit: 10)
+  rescue URI::InvalidURIError => e
+    log_error(e)
+  rescue SocketError => e
+    log_error(e)
+  rescue Errno::ECONNREFUSED => e
+    log_error(e)
+  end
+
+  def log_error(error)
     File.open('cannot_resolve.txt', 'a') do |file|
-      file.write "#{to}\n"
+      file.write "#{ to }, #{ error.message }\n"
     end
 
     nil
@@ -68,9 +89,8 @@ class Link
   end
 
   def self.full_scope_path
-    "#{base}#{scope}"
+    "#{ base }#{ scope }"
   end
-
 end
 
 class Crawler
@@ -90,9 +110,7 @@ class Crawler
   end
 
   def crawl
-    until links.empty?
-      assess links.shift
-    end
+    assess links.shift until links.empty?
   end
 
   private
@@ -104,7 +122,7 @@ class Crawler
   end
 
   def assess(link)
-    puts "Assessing #{link.to}, #{links.length} left"
+    puts "Assessing #{ link.to }, #{ links.length } left"
     if visited.key? link.to
       record link, visited[link.to]
     else
@@ -118,9 +136,8 @@ class Crawler
     return unless response
 
     record(link, response.code)
-    if link.in_scope? && response.code == 200
-      scrape(response) 
-    end
+
+    scrape(response) if link.in_scope? && response.code == 200
 
     visited[link.to] = response.code
   end
@@ -129,9 +146,6 @@ class Crawler
     case code
     when 200
       write(link, code, success_filename)
-    when 301, 307
-      # TODO: Follow redirects
-      write(link, code, success_filename)
     else
       write(link, code, error_filename)
     end
@@ -139,19 +153,23 @@ class Crawler
 
   def write(link, code, filename)
     File.open(filename, 'a') do |file|
-      file.write "#{code} #{link.to} in #{link.from}\n"
+      file.write "#{ code } #{ link.to } in #{ link.from }\n"
     end
   end
 
   def scrape(response)
     request_path = response.request.path.to_s
-    doc = Nokogiri::HTML response.body
-    # TODO: make this configurable
-    tags = doc.search('article')&.first&.search('a')
-    tags&.each do |tag|
+    tags(response).each do |tag|
       path = tag.attributes['href']&.value
+
       links.push(Link.new(to: path, from: request_path)) if path
     end
+  end
+
+  def tags(response)
+    doc = Nokogiri::HTML response.body
+    # TODO: make this configurable
+    doc.search('article')&.first&.search('a') || []
   end
 
   attr_reader :success_filename,
@@ -165,7 +183,6 @@ end
 if $PROGRAM_NAME == __FILE__
   Crawler.new(
     base: 'https://docs.mesosphere.com',
-    scope: '/services/edge-lb/1.3'
+    scope: '/1.10'
   ).crawl
 end
-
