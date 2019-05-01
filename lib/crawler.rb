@@ -2,8 +2,6 @@
 
 require 'nokogiri'
 require 'httparty'
-require 'byebug'
-require_relative 'linked_list'
 
 class Link
   include HTTParty
@@ -100,7 +98,7 @@ class Link
 end
 
 class Crawler
-  def initialize(base:, scope:)
+  def initialize(base:, scope:, output:)
     Link.base = base
     Link.scope = scope
 
@@ -109,13 +107,14 @@ class Crawler
 
     @visited = Hash.new
 
-    @error_filename = 'errors.txt'
-    @success_filename = 'success.txt'
+    @error_filename = "#{ output }/errors.txt"
+    @success_filename = "#{ output }/success.txt"
+    @cannot_resolve_filename = 'cannot_resolve.txt'
 
     clear_files
   end
 
-  def crawl
+  def call
     assess links.shift until links.empty?
   end
 
@@ -124,7 +123,7 @@ class Crawler
   def clear_files
     File.open(@success_filename, 'w') {}
     File.open(@error_filename, 'w') {}
-    File.open('cannot_resolve.txt', 'w') {}
+    File.open(@cannot_resolve_filename, 'w') {}
   end
 
   def assess(link)
@@ -195,5 +194,5 @@ if $PROGRAM_NAME == __FILE__
   Crawler.new(
     base: 'https://docs.mesosphere.com',
     scope: ''
-  ).crawl
+  ).call
 end

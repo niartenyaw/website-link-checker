@@ -1,0 +1,20 @@
+#! /usr/bin/env ruby
+
+require 'thor'
+require_relative '../lib/crawler'
+
+class LinkCLI < Thor
+  desc 'crawl BASE [--scope=SCOPE]', 'Crawl a given base URL but stay inside scope'
+  # options scope: :required
+  option :scope, type: :string, aliases: '-s', default: ''
+  option :output, type: :string, aliases: '-o', default: 'build'
+  def crawl(base)
+    Crawler.new(
+      base: base,
+      output: options[:output],
+      scope: options[:scope]
+    ).call
+  end
+end
+
+LinkCLI.start(ARGV)
